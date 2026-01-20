@@ -3,8 +3,8 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import scipy as sp
-from phase_interpolator import PhaseInterpolator, sin_to_square
-import rx_cdr_functions as cdr
+from phase_interpolator import phase_interpolate, sin_to_square
+import bbpd_cdr_functions as cdr
 
 def bbpd_cdr_loop_tran(
     DESERIALIZATION_FACTOR,

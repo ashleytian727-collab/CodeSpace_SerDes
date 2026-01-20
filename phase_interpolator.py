@@ -289,6 +289,172 @@ def generate_interpolated_bank(clk_0, clk_90, clk_180, clk_270, num_bits,
     return clk_bank, clk_bank_n, phases, phase_errors, codes
 
 
+def sin_to_square(signal, method='zerocross', threshold=0.0, slew_rate=None):
+    """
+    Convert a sinusoidal signal to a square wave using various methods.
+    
+    This function converts continuous sinusoidal clock signals to digital square
+    wave signals using different conversion techniques, modeling realistic
+    comparator behavior.
+    
+    Parameters
+    ----------
+    signal : ndarray
+        Input sinusoidal signal to convert
+    method : str, optional
+        Conversion method to use. Options:
+        - 'zerocross': Zero-crossing detector (fastest edge)
+        - 'threshold': Comparator with fixed threshold level
+        - 'slew': Slew-rate limited comparator output
+        - 'hysteresis': Schmitt trigger with hysteresis
+        - 'quantized': Quantized output with limited levels
+        Default is 'zerocross'
+    threshold : float, optional
+        Threshold level for comparator-based methods. Default is 0.0 (mid-point)
+    slew_rate : float, optional
+        Slew rate for 'slew' method in units/sample. If None, uses fastest slew.
+        Default is None
+    
+    Returns
+    -------
+    square : ndarray
+        Output square wave signal (typically ±1 or 0/1)
+    edge_indices : ndarray
+        Indices where rising edges occur
+    transition_times : ndarray
+        Estimated transition times (in samples) with sub-sample precision
+    
+    Raises
+    ------
+    ValueError
+        If method is not recognized or invalid parameters provided
+    
+    Examples
+    --------
+    Convert a sinusoidal clock to square wave using zero-crossing detector:
+    
+    >>> from clock_generator import generate_clock_signal
+    >>> from phase_interpolator import sin_to_square
+    >>> 
+    >>> # Generate a sinusoidal clock
+    >>> t, clk_0, _, _, _, _, _, _ = generate_clock_signal(
+    ...     clock_freq_hz=10e9,
+    ...     duration_ui=10,
+    ...     samples_per_ui=256
+    ... )
+    >>> 
+    >>> # Convert to square wave
+    >>> square_wave, edges, trans_times = sin_to_square(clk_0, method='zerocross')
+    >>> print(f"Generated {len(edges)} rising edges")
+    >>> print(f"Square wave range: [{square_wave.min():.2f}, {square_wave.max():.2f}]")
+    """
+    
+    signal = np.asarray(signal)
+    
+    if method == 'zerocross':
+        # Zero-crossing detector: output transitions where signal crosses threshold
+        # Find zero crossings with sub-sample precision
+        zero_crosses = np.where(np.diff(np.sign(signal - threshold)))[0]
+        
+        # Interpolate for more precise crossing times using linear interpolation
+        transition_times = np.zeros(len(zero_crosses))
+        for i, idx in enumerate(zero_crosses):
+            if idx < len(signal) - 1:
+                # Linear interpolation to find exact crossing point
+                y0 = signal[idx] - threshold
+                y1 = signal[idx + 1] - threshold
+                transition_times[i] = idx - y0 / (y1 - y0) if (y1 - y0) != 0 else idx
+            else:
+                transition_times[i] = idx
+        
+        # Generate square wave from transitions
+        square = np.ones_like(signal, dtype=float)
+        current_state = 1 if signal[0] > threshold else -1
+        square[0] = current_state
+        
+        for idx in zero_crosses:
+            if idx < len(signal):
+                current_state *= -1
+                square[idx:] = current_state
+        
+        # Find rising edges (transitions from -1 to +1)
+        rising_edges = zero_crosses[::2] if len(zero_crosses) > 0 else np.array([])
+        
+    elif method == 'threshold':
+        # Simple comparator: output high when signal > threshold, else low
+        square = np.where(signal > threshold, 1.0, -1.0)
+        
+        # Find rising edges (transitions from -1 to +1)
+        rising_edges = np.where(np.diff(square) > 0)[0]
+        transition_times = rising_edges.astype(float)
+        
+    elif method == 'slew':
+        # Slew-rate limited comparator output
+        if slew_rate is None:
+            slew_rate = 2.0  # Default fast slew rate
+        
+        square = np.zeros_like(signal, dtype=float)
+        current_output = -1.0 if signal[0] < threshold else 1.0
+        target_output = current_output
+        square[0] = current_output
+        
+        for i in range(1, len(signal)):
+            # Update target based on input
+            target_output = 1.0 if signal[i] > threshold else -1.0
+            
+            # Slew towards target
+            diff = target_output - current_output
+            if abs(diff) > slew_rate:
+                current_output += np.sign(diff) * slew_rate
+            else:
+                current_output = target_output
+            
+            square[i] = current_output
+        
+        # Find rising edges
+        rising_edges = np.where(np.diff(square) > 0)[0]
+        transition_times = rising_edges.astype(float)
+        
+    elif method == 'hysteresis':
+        # Schmitt trigger with hysteresis
+        upper_threshold = threshold + 0.1
+        lower_threshold = threshold - 0.1
+        
+        square = np.zeros_like(signal, dtype=float)
+        current_state = -1.0 if signal[0] < lower_threshold else 1.0
+        square[0] = current_state
+        
+        for i in range(1, len(signal)):
+            if current_state > 0:  # Currently high
+                if signal[i] < lower_threshold:
+                    current_state = -1.0
+            else:  # Currently low
+                if signal[i] > upper_threshold:
+                    current_state = 1.0
+            square[i] = current_state
+        
+        # Find rising edges
+        rising_edges = np.where(np.diff(square) > 0)[0]
+        transition_times = rising_edges.astype(float)
+        
+    elif method == 'quantized':
+        # Quantized levels
+        levels = 3  # Number of quantization levels
+        normalized = (signal - signal.min()) / (signal.max() - signal.min() + 1e-10)
+        quantized = np.round(normalized * (levels - 1)) / (levels - 1)
+        square = 2.0 * quantized - 1.0  # Convert to [-1, 1] range
+        
+        # Find rising edges
+        rising_edges = np.where(np.diff(square) > 0)[0]
+        transition_times = rising_edges.astype(float)
+        
+    else:
+        raise ValueError(f"Unknown method: {method}. Must be one of: "
+                        "'zerocross', 'threshold', 'slew', 'hysteresis', 'quantized'")
+    
+    return square, rising_edges, transition_times
+
+
 def create_dnl_profile(num_bits, dnl_magnitude=0.5, shape='random'):
     """
     Create a DNL (Differential Non-Linearity) error profile.

@@ -33,7 +33,7 @@ def example_1_single_phase():
     num_bits = 8
     code_45deg = 128  # Middle of first quadrant
     
-    clk_45, phase_45, ratio_45 = phase_interpolate(
+    clk_45, _, phase_45, _, ratio_45 = phase_interpolate(
         clk_0, clk_90, clk_180, clk_270, num_bits, code_45deg
     )
     
@@ -82,7 +82,7 @@ def example_2_phase_sweep():
     phases = []
     
     for code in range(quadrant_size):
-        clk_interp, phase, _ = phase_interpolate(
+        clk_interp, _, phase, _, _ = phase_interpolate(
             clk_0, clk_90, clk_180, clk_270, num_bits, code
         )
         
@@ -115,7 +115,7 @@ def example_3_phase_bank():
     
     # Generate phase bank
     num_bits = 6
-    clk_bank, phases, codes = generate_interpolated_bank(
+    clk_bank, _, phases, _, codes = generate_interpolated_bank(
         clk_0, clk_90, clk_180, clk_270, num_bits
     )
     
@@ -172,7 +172,7 @@ def example_4_cdr_feedback():
     code_values = []
     
     for iteration in range(20):
-        clk_interp, phase, ratio = phase_interpolate(
+        clk_interp, _, phase, _, ratio = phase_interpolate(
             clk_0, clk_90, clk_180, clk_270, num_bits, code
         )
         
@@ -233,7 +233,7 @@ def example_5_visualization():
     colors = plt.cm.hsv(np.linspace(0, 1, len(phase_codes)))
     
     for i, code in enumerate(phase_codes):
-        clk_interp, phase, _ = phase_interpolate(
+        clk_interp, _, phase, _, _ = phase_interpolate(
             clk_0, clk_90, clk_180, clk_270, num_bits, code
         )
         ax.plot(t*1e12, clk_interp, label=f'{phase:.1f}°', linewidth=1.5, color=colors[i], alpha=0.7)

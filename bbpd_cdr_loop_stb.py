@@ -33,7 +33,11 @@ def bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, sweep_type, KP_GAIN, KI_GAIN, PI_NUM_
     # ==========================================  
     # Choose parameter to sweep: 'KP_GAIN', 'KI_GAIN', or 'LATENCY'  
     #sweep_type = 'KP_GAIN'   
-    UI_margin = (1 - 12*RJ_SIGMA)   # Jitter Tolerance Margin  
+    UI_margin = (1 - 12*RJ_SIGMA)   # Jitter Tolerance Margin
+
+    fixed_Ki_dig = 0
+    fixed_Kp_dig = 0
+    fixed_N      = 0
   
     if sweep_type == 'KP_GAIN':  
         sweep_values = [2**-1, 1, 2, 4, 8]  # Sweep Digital Kp Gain  
