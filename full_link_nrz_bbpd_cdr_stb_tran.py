@@ -6,16 +6,14 @@ from matplotlib.ticker import FuncFormatter
 from scipy.interpolate import PchipInterpolator  
 import warnings  
 import os  
-import sys  
-# sys.path.append(r"/Users/tamaldas/Documents/Scripts/Python/serdespy-main/")  
-sys.path.append(r"/Users/tamal.das2/Projects/SerDes/serdespy")  
+import sys
+
+## Custom Libraries
 import serdespy as sdp  
-from clock_generator import generate_clock_with_jitter  
-from phase_interpolator import PhaseInterpolator, create_dnl_profile, sin_to_square  
-from sparam_functions import *  
-from dynamic_plotting import *  
-import rx_cdr_functions as cdr  
-from bbpd_dig_cdr_stab import bbpd_dig_cdr_stab  
+from clock_generator import generate_clock_signal  
+from sparam_modeling import *
+import bbpd_cdr_functions as cdr  
+from bbpd_cdr_loop_stb import bbpd_dig_cdr_stab  
 from bbpd_cdr_loop_tran import bbpd_cdr_loop_tran  
   
 # Suppress warnings for cleaner output  
@@ -27,8 +25,8 @@ g = {
     'f': None,  
     'pulse_resp_ch': None,  
     'ratio_oversampling': None,  
-    'ui': None,  
-    'os': None,  
+    'ui': float,  
+    'os': int,  
     'H_ch': None,  
     'tx_launch_amp': None,  
     'pulse_signal_length': None,  
@@ -49,7 +47,6 @@ def main():
   
     ###################  Global Variables ###################   
     data_rate = 56.1e9 #NRZ  
-    f_nyq = data_rate / 2  
     g['ui'] = 1 / data_rate  
     g['os'] = 128 # Samples per symbol  
     g['tx_launch_amp'] = 0.6  
@@ -111,17 +108,17 @@ def main():
     RJ_STD_DEV = RJ_SIGMA * g['ui']  
     DJ_FREQ = 100e6  
     DJ_AMPLITUDE = 0.00 * 2 * g['ui']  
-    RX_CLOCK_FREQUENCY = data_rate/2  
-    t_cdr, rx_clk_i, rx_clk_i_b, rx_clk_q, rx_clk_q_b, sample_rate = generate_clock_with_jitter(  
-        clock_freq= RX_CLOCK_FREQUENCY,  
-        duration=duration,  
-        oversample_ratio=g['os'] * 2,  
-        rj_std_dev=RJ_STD_DEV,  
-        dj_freq=DJ_FREQ,  
-        dj_amplitude=DJ_AMPLITUDE,  
-        filter_bw_factor=1.5,  
-        generate_q_clock=True  
-    )  
+    RX_CLOCK_FREQUENCY = data_rate/2
+    SAMPLE_RATE = 1/Ts
+    t_cdr, rx_clk_i, rx_clk_i_b, rx_clk_q, rx_clk_q_b, f_noise, pn_dbchz, ui = generate_clock_signal(
+        clock_freq_hz=RX_CLOCK_FREQUENCY,
+        duration_ui=int(duration/g['ui']),
+        samples_per_ui=g['os'] * 2,
+        rj_rms_ui=RJ_STD_DEV,
+        dj_freq_hz=DJ_FREQ,
+        dj_peak_ui=DJ_AMPLITUDE
+    )
+
     fig = bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, '',   
                       KP_GAIN, KI_GAIN, PI_NUM_BITS, PHASE_INTG_DITHER_BITS, FREQ_INTG_DITHER_BITS, DECIMATION_FACTOR,   
                       SYMBOL_INTERVAL, TOTAL_LOOP_GAIN_FACTOR, TOTAL_LOOP_LATENCY_WORDS)  
@@ -188,7 +185,7 @@ def main():
         rx_clk_q,  
         rx_clk_q_b,  
         t_cdr,  
-        sample_rate,  
+        SAMPLE_RATE,  
         RX_CLOCK_FREQUENCY,  
         SAMPLER_C2Q,  
         SAMPLER_SENSE,  
@@ -205,7 +202,7 @@ def main():
     idx_max = 800000  
     arr = signal_filtered[idx_min:idx_max]  
     crossings = np.where(arr[:-1] * arr[1:] < 0)[0]  
-    zero_cross = crossings[0] if len(crossings) > 0 else None  
+    zero_cross = crossings[0] if len(crossings) > 0 else 0  
     sdp.simple_eye(signal_filtered[idx_min+zero_cross+int(g['os']/2):], g['os']*2, 2000, Ts, "{}Gbps 2-PAM Signal after Channel".format(round(data_rate/1e9)),res=100)  
     sdp.simple_eye(np.array(rxpi_sq_i_final[900*20*g['os']:])*0.5, g['os']*2, 2000, Ts, "{}GHZ Half Rate Recovered Clock".format(round(RX_CLOCK_FREQUENCY/1e9)),res=100)  
   

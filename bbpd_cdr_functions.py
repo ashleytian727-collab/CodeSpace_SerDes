@@ -456,7 +456,7 @@ def analyze_cdr_stability(Kp_nominal: float, Ki_nominal: float, ui_period: float
 # In rx_cdr_functions.py
 
 def plot_cdr_analysis(Kp_nominal: float, Ki_nominal: float, T_word: float, M: int, 
-                       total_gain_factor: float, plot_max_freq: float = None):
+                       total_gain_factor: float, plot_max_freq: float = 0.0):
     """
     Plots both the Open-Loop Bode diagram (Magnitude and Phase) and the 
     Closed-Loop Jitter Transfer Function (JTF) Magnitude.
@@ -590,7 +590,7 @@ def plot_cdr_analysis(Kp_nominal: float, Ki_nominal: float, T_word: float, M: in
     plt.close(fig)
 
 def plot_bode_analysis(Kp_nominal: float, Ki_nominal: float, T_word: float, M: int, 
-                       total_gain_factor: float, plot_max_freq: float = None):
+                       total_gain_factor: float, plot_max_freq: float = 0.0):
     """
     Plots the Bode diagram (Magnitude and Phase) of the Type-II CDR's open-loop 
     transfer function G(z)H(z) including loop latency z^(-M) and all physical gains.

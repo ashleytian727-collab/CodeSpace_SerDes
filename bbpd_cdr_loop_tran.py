@@ -1,9 +1,8 @@
-
 import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import scipy as sp
-from phase_interpolator import phase_interpolate, sin_to_square
+from phase_interpolator import phase_interpolate, create_dnl_profile, sin_to_square  
 import bbpd_cdr_functions as cdr
 
 def bbpd_cdr_loop_tran(
@@ -56,7 +55,7 @@ def bbpd_cdr_loop_tran(
     history_sah_output_e0 = -1 * np.ones(samples_per_word)
     history_sah_output_e1 = -1 * np.ones(samples_per_word)
     # ---  --- Instantiate PI Object
-    pi = PhaseInterpolator(num_bits=PI_NUM_BITS)
+    pi = phase_interpolate(num_bits=PI_NUM_BITS)
 
     #Time-Marching Loop ---
     plot_once = False

@@ -23,8 +23,8 @@ ENHANCED FEATURES (v2.0):
 import numpy as np
 
 
-def phase_interpolate(clk_0, clk_90, clk_180, clk_270, num_bits, code, 
-                      dnl_profile=None, inl_profile=None, complementary=False):
+def _phase_interpolate_impl(clk_0, clk_90, clk_180, clk_270, num_bits, code, 
+                            dnl_profile=None, inl_profile=None, complementary=False):
     """
     Generate an interpolated clock signal by mixing adjacent quadrature clocks.
     
@@ -85,7 +85,7 @@ def phase_interpolate(clk_0, clk_90, clk_180, clk_270, num_bits, code,
     Generate a 10 GHz clock and create 256 interpolated phases:
     
     >>> from clock_generator import generate_clock_signal
-    >>> from phase_interpolator import phase_interpolate
+    >>> from phase_interpolator import _phase_interpolate_impl
     >>> 
     >>> # Generate quadrature clocks
     >>> t, clk_0, clk_90, clk_180, clk_270, f, pn, ui = generate_clock_signal(
@@ -97,7 +97,7 @@ def phase_interpolate(clk_0, clk_90, clk_180, clk_270, num_bits, code,
     >>> # Create interpolated clock at 45° with complementary output
     >>> num_bits = 8  # 256 phases per quadrant
     >>> code = 2**7   # Middle of first quadrant (45°)
-    >>> clk_interp, clk_interp_n, phase, error, ratio = phase_interpolate(
+    >>> clk_interp, clk_interp_n, phase, error, ratio = _phase_interpolate_impl(
     ...     clk_0, clk_90, clk_180, clk_270, num_bits, code, complementary=True
     ... )
     >>> print(f"Output phase: {phase:.1f}°, Phase error: {error:.3f}°")
@@ -209,6 +209,189 @@ def phase_interpolate(clk_0, clk_90, clk_180, clk_270, num_bits, code,
     return clk_interp, clk_interp_n, phase_degrees, phase_error, mixing_ratio
 
 
+class phase_interpolate:
+    """
+    Phase interpolator class for CDR/sampling applications.
+    
+    This class provides an object-oriented interface for phase interpolation,
+    designed for use in Clock and Data Recovery (CDR) loops and high-speed
+    sampling applications. It maintains configuration and provides methods
+    for generating interpolated clocks at specified phases.
+    
+    The interpolator uses weighted mixing of four quadrature clock inputs
+    (0°, 90°, 180°, 270°) to generate outputs at arbitrary phases determined
+    by a digital control code.
+    
+    Parameters
+    ----------
+    num_bits : int
+        Phase resolution in bits. Total phase codes = 4 * 2^num_bits.
+        For example, num_bits=6 gives 256 total phase codes.
+    dnl_profile : ndarray, optional
+        Differential Non-Linearity error profile for realistic PI mismatch.
+        Should have length = 4 * 2^num_bits.
+    inl_profile : ndarray, optional
+        Integral Non-Linearity error profile.
+    
+    Examples
+    --------
+    Create a phase interpolator with 6-bit resolution (256 codes):
+    
+    >>> pi = phase_interpolate(num_bits=6)
+    
+    Generate interpolated clock at code 128:
+    
+    >>> clk_i, clk_i_b = pi.interpolate_phase(clk_0, clk_0_b, clk_90, clk_90_b, code=128)
+    
+    Generate both I and Q phase clocks:
+    
+    >>> clk_i, clk_i_b, clk_q, clk_q_b = pi.interpolate_phase_quad(
+    ...     clk_0, clk_0_b, clk_90, clk_90_b, code=128
+    ... )
+    """
+    
+    def __init__(self, num_bits, dnl_profile=None, inl_profile=None):
+        """
+        Initialize phase interpolator with configuration.
+        
+        Parameters
+        ----------
+        num_bits : int
+            Phase resolution in bits
+        dnl_profile : ndarray, optional
+            DNL error profile
+        inl_profile : ndarray, optional
+            INL error profile
+        """
+        self.num_bits = num_bits
+        self.dnl_profile = dnl_profile
+        self.inl_profile = inl_profile
+        self.max_code = 4 * (2 ** num_bits) - 1
+        self.total_codes = 4 * (2 ** num_bits)
+    
+    def interpolate_phase(self, clk_0, clk_0_b, clk_90, clk_90_b, code):
+        """
+        Generate interpolated clock at specified code with complementary output.
+        
+        This method is the primary interface for CDR applications. It takes
+        four quadrature clock inputs (true and complement pairs) and generates
+        an interpolated clock at the phase specified by the control code.
+        
+        Parameters
+        ----------
+        clk_0 : ndarray
+            Clock signal at 0° phase (true)
+        clk_0_b : ndarray
+            Clock signal at 0° phase (complement/bar)
+        clk_90 : ndarray
+            Clock signal at 90° phase (true)
+        clk_90_b : ndarray
+            Clock signal at 90° phase (complement/bar)
+        code : int or float
+            Control code [0, 4*2^num_bits - 1] specifying the output phase.
+            code=0 → 0°, code=total_codes/4 → 90°, etc.
+        
+        Returns
+        -------
+        clk_interp : ndarray
+            Interpolated clock signal at the requested phase
+        clk_interp_b : ndarray
+            Complementary interpolated clock (180° out of phase)
+        
+        Raises
+        ------
+        ValueError
+            If code is outside valid range or clock arrays have mismatched lengths
+        
+        Examples
+        --------
+        >>> clk_i, clk_i_b = pi.interpolate_phase(clk_0, clk_0_b, clk_90, clk_90_b, 64)
+        """
+        # Validate code
+        code_int = int(code) % self.total_codes
+        
+        clk_i, clk_i_b, _, _, _ = _phase_interpolate_impl(
+            clk_0, clk_90, clk_0_b, clk_90_b, self.num_bits, code_int,
+            dnl_profile=self.dnl_profile, inl_profile=self.inl_profile,
+            complementary=True
+        )
+        return clk_i, clk_i_b
+    
+    def interpolate_phase_quad(self, clk_0, clk_0_b, clk_90, clk_90_b, code):
+        """
+        Generate both in-phase and quadrature interpolated clocks.
+        
+        This method generates two sets of complementary clocks offset by 90°.
+        Useful for half-rate sampling or quadrature detection applications.
+        
+        Parameters
+        ----------
+        clk_0 : ndarray
+            Clock signal at 0° phase (true)
+        clk_0_b : ndarray
+            Clock signal at 0° phase (complement)
+        clk_90 : ndarray
+            Clock signal at 90° phase (true)
+        clk_90_b : ndarray
+            Clock signal at 90° phase (complement)
+        code : int or float
+            Control code for the in-phase clock [0, 4*2^num_bits - 1]
+        
+        Returns
+        -------
+        clk_i : ndarray
+            In-phase interpolated clock
+        clk_i_b : ndarray
+            In-phase complementary clock
+        clk_q : ndarray
+            Quadrature interpolated clock (90° offset from in-phase)
+        clk_q_b : ndarray
+            Quadrature complementary clock
+        
+        Examples
+        --------
+        >>> clk_i, clk_i_b, clk_q, clk_q_b = pi.interpolate_phase_quad(
+        ...     clk_0, clk_0_b, clk_90, clk_90_b, code=64
+        ... )
+        """
+        code_int = int(code) % self.total_codes
+        # Offset code by 90° (one quadrant)
+        code_90_offset = (code_int + (2 ** self.num_bits)) % self.total_codes
+        
+        # In-phase
+        clk_i, clk_i_b, _, _, _ = _phase_interpolate_impl(
+            clk_0, clk_90, clk_0_b, clk_90_b, self.num_bits, code_int,
+            dnl_profile=self.dnl_profile, inl_profile=self.inl_profile,
+            complementary=True
+        )
+        
+        # Quadrature (90° offset)
+        clk_q, clk_q_b, _, _, _ = _phase_interpolate_impl(
+            clk_0, clk_90, clk_0_b, clk_90_b, self.num_bits, code_90_offset,
+            dnl_profile=self.dnl_profile, inl_profile=self.inl_profile,
+            complementary=True
+        )
+        
+        return clk_i, clk_i_b, clk_q, clk_q_b
+    
+    def get_phase_degrees(self, code):
+        """
+        Convert control code to phase in degrees.
+        
+        Parameters
+        ----------
+        code : int
+            Control code [0, 4*2^num_bits - 1]
+        
+        Returns
+        -------
+        phase_deg : float
+            Phase in degrees [0, 360)
+        """
+        code_int = int(code) % self.total_codes
+        return (code_int / self.total_codes) * 360.0
+
+
 def generate_interpolated_bank(clk_0, clk_90, clk_180, clk_270, num_bits, 
                                dnl_profile=None, inl_profile=None, complementary=False):
     """
@@ -275,7 +458,7 @@ def generate_interpolated_bank(clk_0, clk_90, clk_180, clk_270, num_bits,
     
     # Generate all interpolated clocks
     for code in range(num_phases):
-        clk, clk_n, phase, error, _ = phase_interpolate(
+        clk, clk_n, phase, error, _ = _phase_interpolate_impl(
             clk_0, clk_90, clk_180, clk_270, num_bits, code,
             dnl_profile=dnl_profile, inl_profile=inl_profile, 
             complementary=complementary
@@ -289,7 +472,7 @@ def generate_interpolated_bank(clk_0, clk_90, clk_180, clk_270, num_bits,
     return clk_bank, clk_bank_n, phases, phase_errors, codes
 
 
-def sin_to_square(signal, method='zerocross', threshold=0.0, slew_rate=None):
+def sin_to_square(signal, sample_rate, clock_freq, method='zerocross', threshold=0.0, slew_rate=None):
     """
     Convert a sinusoidal signal to a square wave using various methods.
     
@@ -301,6 +484,10 @@ def sin_to_square(signal, method='zerocross', threshold=0.0, slew_rate=None):
     ----------
     signal : ndarray
         Input sinusoidal signal to convert
+    sample_rate : float
+        Sampling rate in Hz
+    clock_freq : float
+        Clock frequency in Hz
     method : str, optional
         Conversion method to use. Options:
         - 'zerocross': Zero-crossing detector (fastest edge)
@@ -344,7 +531,7 @@ def sin_to_square(signal, method='zerocross', threshold=0.0, slew_rate=None):
     ... )
     >>> 
     >>> # Convert to square wave
-    >>> square_wave, edges, trans_times = sin_to_square(clk_0, method='zerocross')
+    >>> square_wave, edges, trans_times = sin_to_square(clk_0, 2.56e12, 10e9, method='zerocross')
     >>> print(f"Generated {len(edges)} rising edges")
     >>> print(f"Square wave range: [{square_wave.min():.2f}, {square_wave.max():.2f}]")
     """
@@ -621,7 +808,7 @@ if __name__ == '__main__':
     
     for code in test_codes:
         try:
-            clk_interp, _, phase, _, ratio = phase_interpolate(
+            clk_interp, _, phase, _, ratio = _phase_interpolate_impl(
                 clk_0, clk_90, clk_180, clk_270, num_bits, code
             )
             
@@ -674,7 +861,7 @@ if __name__ == '__main__':
     
     for nb, code, description in invalid_codes:
         try:
-            clk_interp, _, phase, _, ratio = phase_interpolate(
+            clk_interp, _, phase, _, ratio = _phase_interpolate_impl(
                 clk_0, clk_90, clk_180, clk_270, nb, code
             )
             print(f"✗ {description:<25} - Should have raised error!")
@@ -690,7 +877,7 @@ if __name__ == '__main__':
     code_comp = 128
     print(f"\nGenerating complementary clocks at code={code_comp}, num_bits={num_bits_comp}...")
     
-    clk_p, clk_n, phase_comp, error_comp, ratio_comp = phase_interpolate(
+    clk_p, clk_n, phase_comp, error_comp, ratio_comp = _phase_interpolate_impl(
         clk_0, clk_90, clk_180, clk_270, num_bits_comp, code_comp, complementary=True
     )
     
@@ -748,7 +935,7 @@ if __name__ == '__main__':
     colors = plt.cm.hsv(np.linspace(0, 1, len(viz_codes)))
     
     for i, code in enumerate(viz_codes):
-        clk_interp, _, phase, _, _ = phase_interpolate(
+        clk_interp, _, phase, _, _ = _phase_interpolate_impl(
             clk_0, clk_90, clk_180, clk_270, num_bits_viz, code
         )
         label = f"code={code} ({phase:.1f}°)"

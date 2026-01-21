@@ -49,7 +49,7 @@ def generate_clock_signal(
     ui = 1.0 / clock_freq_hz  # UI in seconds
     
     # Calculate sampling frequency based on oversampling
-    fs_hz = samples_per_ui * clock_freq_hz
+    fs_hz:float = samples_per_ui * clock_freq_hz
     
     # Calculate total duration in seconds
     duration_s = duration_ui * ui
