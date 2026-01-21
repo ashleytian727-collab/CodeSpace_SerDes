@@ -2,6 +2,8 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import scipy as sp
+from pathlib import Path
+
 from phase_interpolator import phase_interpolate, create_dnl_profile, sin_to_square  
 import bbpd_cdr_functions as cdr
 
@@ -60,7 +62,7 @@ def bbpd_cdr_loop_tran(
     #Time-Marching Loop ---
     plot_once = False
     window_count = 0
-    window_to_print = 1000
+    window_to_print = 400 #After how many windows to print debug plot
 
     for i in range(num_words_to_simulate): #Loop is going through every 20 bits or a word or byte_clock
         if i % 100 == 0:
@@ -96,10 +98,10 @@ def bbpd_cdr_loop_tran(
         rxpi_q, rxpi_qb = pi.interpolate_phase(clk_i_slice, clk_ib_slice, clk_q_slice, clk_qb_slice, (active_pi_code + (2**PI_NUM_BITS))%(4*2**PI_NUM_BITS)) 
 
         # Convert to Square (Slicing)
-        rxpi_sq_i  = sin_to_square(rxpi_i, sample_rate, RX_CLOCK_FREQUENCY)
-        rxpi_sq_ib = sin_to_square(rxpi_ib, sample_rate, RX_CLOCK_FREQUENCY)
-        rxpi_sq_q  = sin_to_square(rxpi_q, sample_rate, RX_CLOCK_FREQUENCY)
-        rxpi_sq_qb = sin_to_square(rxpi_qb, sample_rate, RX_CLOCK_FREQUENCY)
+        rxpi_sq_i, _, _ = sin_to_square(rxpi_i, sample_rate, RX_CLOCK_FREQUENCY)
+        rxpi_sq_ib, _, _ = sin_to_square(rxpi_ib, sample_rate, RX_CLOCK_FREQUENCY)
+        rxpi_sq_q, _, _ = sin_to_square(rxpi_q, sample_rate, RX_CLOCK_FREQUENCY)
+        rxpi_sq_qb, _, _ = sin_to_square(rxpi_qb, sample_rate, RX_CLOCK_FREQUENCY)
 
         rxpi_sq_i_final.extend(rxpi_sq_i)
 
@@ -125,6 +127,32 @@ def bbpd_cdr_loop_tran(
         # For simulation stability, we assume the windowing captured at least one full word.
         deser_data, deser_edge = cdr.deserialize_2_to_20(hr_data, hr_edge, factor=DESERIALIZATION_FACTOR, pipeline_latency_words=0) #pi_code_fifo models the latency
         
+        if plot_once:
+            print(f"length of pi clock: {len(rxpi_sq_i)}")
+            print(f"length of sampler output: {len(sah_output_d1)}")
+            print(f"Size of hr data: {hr_data.shape}")
+            print(hr_data)
+            print(f"Size of dser data: {deser_data.shape}")
+            print(deser_data)
+            print(deser_edge)
+            fig_debug = plt.figure(figsize=(12, 6))
+            plt.subplot(2, 1, 1)
+            plt.plot(t_cdr_slice,signal_filtered[safe_start:safe_end], label="Data Signal")
+            plt.plot(t_cdr_slice,rxpi_sq_i, label="In pahse HRCLK")
+            plt.plot(t_cdr_slice,rxpi_sq_q, label ="Q phase HRCLK")
+            plt.legend()
+            plt.grid(True)
+            plt.subplot(2, 1, 2)
+            plt.plot(t_cdr_slice,rxpi_sq_i, label="In pahse HRCLK")
+            plt.plot(t_cdr_slice,sah_output_d0, label="In pahse HRDATA")
+            plt.plot(t_cdr_slice,sah_output_e0, label="In pahse HRDATA")
+            plt.legend()
+            plt.grid(True)
+            script_dir = Path(__file__).resolve().parent
+            fig_debug_dir = script_dir / "debug_plot/bbpd_cdr_tran_snap.png"
+            fig_debug.savefig(fig_debug_dir)
+            plot_once = False
+
         if len(deser_data) == 0:
             # Skip if sampling failed (e.g. signal end)
             history_pi_codes.append(active_pi_code)
@@ -167,42 +195,20 @@ def bbpd_cdr_loop_tran(
         # Handle Float Wrap (to keep float variable bounded)
         current_pi_code_float = current_pi_code_float % TOTAL_PI_CODES
 
-        # F. Latency Update
+        # ... Latency Update
         # The new code calculated now will apply N cycles later.
         pi_code_fifo.append(next_pi_code_int) # Enqueue new code
         current_pi_code_int = next_pi_code_int # Update loop variable tracking
         
-        # G. Record History
+        # ... Record History
         history_pi_codes.append(active_pi_code)
         history_freq_code.append(freq_integrator_state)
         history_phase_error.append(error_val)
         history_phase_float.append(current_pi_code_float)
 
-        if plot_once:
-            print(f"length of pi clock: {len(rxpi_sq_i)}")
-            print(f"length of sampler output: {len(sah_output_d1)}")
-            print(f"Size of hr data: {hr_data.shape}")
-            print(hr_data)
-            print(f"Size of dser data: {deser_data.shape}")
-            print(deser_data)
-            print(deser_edge)
-            plt.figure(figsize=(12, 6))
-            plt.subplot(2, 1, 1)
-            plt.plot(t_cdr_slice,signal_filtered[safe_start:safe_end], label="Data Signal")
-            plt.plot(t_cdr_slice,rxpi_sq_i, label="In pahse HRCLK")
-            plt.plot(t_cdr_slice,rxpi_sq_q, label ="Q phase HRCLK")
-            plt.legend()
-            plt.grid(True)
-            plt.subplot(2, 1, 2)
-            plt.plot(t_cdr_slice,rxpi_sq_i, label="In pahse HRCLK")
-            plt.plot(t_cdr_slice,sah_output_d0, label="In pahse HRDATA")
-            plt.plot(t_cdr_slice,sah_output_e0, label="In pahse HRDATA")
-            plt.legend()
-            plt.grid(True)
-            plot_once = False
 
     print('------------------------------------------------------\n')        
-    plt.figure(figsize=(12, 6))
+    fig = plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
     plt.plot(history_pi_codes)
     plt.title(f"CDR Lock Behavior (Kp={KP_GAIN}, Ki={KI_GAIN})")
@@ -221,6 +227,8 @@ def bbpd_cdr_loop_tran(
     plt.grid(True)
         
     plt.tight_layout()
-    plt.show()
+    script_dir = Path(__file__).resolve().parent
+    fig_dir = script_dir / "plots/bbpd_cdr_tran.png"
+    fig.savefig(fig_dir)
 
     return(rxpi_sq_i_final)

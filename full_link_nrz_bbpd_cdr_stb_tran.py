@@ -18,9 +18,13 @@ from sparam_modeling import *
 import bbpd_cdr_functions as cdr  
 from bbpd_cdr_loop_stb import bbpd_dig_cdr_stab  
 from bbpd_cdr_loop_tran import bbpd_cdr_loop_tran  
+from plot_save_utils import setup_plot_saving, save_all_plots
   
 # Suppress warnings for cleaner output  
-warnings.filterwarnings('ignore')  
+warnings.filterwarnings('ignore')
+
+# Setup plot saving to automatically save plots to plots/ directory
+setup_plot_saving()  
   
 # Global variables dictionary to mimic MATLAB's global scope  
 g = {  
@@ -113,7 +117,7 @@ def main():
     DJ_AMPLITUDE = 0.00 * 2 * g['ui']  
     RX_CLOCK_FREQUENCY = data_rate/2
     SAMPLE_RATE = 1/Ts
-    t_cdr, rx_clk_i, rx_clk_i_b, rx_clk_q, rx_clk_q_b, f_noise, pn_dbchz, ui = generate_clock_signal(
+    t_cdr, rx_clk_i, rx_clk_q, rx_clk_i_b, rx_clk_q_b, f_noise, pn_dbchz, ui = generate_clock_signal(
         clock_freq_hz=RX_CLOCK_FREQUENCY,
         duration_ui=int(duration/g['ui']),
         samples_per_ui=g['os'] * 2,
@@ -130,9 +134,6 @@ def main():
     
     print("Saving Bode analysis figure...")
     sys.stdout.flush()
-    script_dir = Path(__file__).resolve().parent
-    fig_dir = script_dir / "plots/bbpd_cdr_stability.png"
-    fig.savefig(fig_dir)
     print("Bode analysis saved.")
     sys.stdout.flush()  
 
@@ -200,28 +201,28 @@ def main():
     sys.stdout.flush()
   
     ###################  CDR LOOP TRAN ###################    
-    # rxpi_sq_i_final = bbpd_cdr_loop_tran(  
-    #     DESERIALIZATION_FACTOR,  
-    #     g,  
-    #     signal_filtered,  
-    #     PHASE_INTG_DITHER_BITS,  
-    #     TOTAL_LOOP_LATENCY_WORDS,  
-    #     PI_NUM_BITS,  
-    #     rx_clk_i,  
-    #     rx_clk_i_b,  
-    #     rx_clk_q,  
-    #     rx_clk_q_b,  
-    #     t_cdr,  
-    #     SAMPLE_RATE,  
-    #     RX_CLOCK_FREQUENCY,  
-    #     SAMPLER_C2Q,  
-    #     SAMPLER_SENSE,  
-    #     KP_GAIN,  
-    #     KI_GAIN,  
-    #     FREQ_INTG_DITHER_BITS,  
-    #     TOTAL_PI_CODES,  
-    #     VOTER_DECIMATION_FACTOR,  
-    # )  
+    rxpi_sq_i_final = bbpd_cdr_loop_tran(  
+        DESERIALIZATION_FACTOR,  
+        g,  
+        signal_filtered,  
+        PHASE_INTG_DITHER_BITS,  
+        TOTAL_LOOP_LATENCY_WORDS,  
+        PI_NUM_BITS,  
+        rx_clk_i,
+        rx_clk_i_b,  
+        rx_clk_q,  
+        rx_clk_q_b,  
+        t_cdr,  
+        SAMPLE_RATE,  
+        RX_CLOCK_FREQUENCY,  
+        SAMPLER_C2Q,  
+        SAMPLER_SENSE,  
+        KP_GAIN,  
+        KI_GAIN,  
+        FREQ_INTG_DITHER_BITS,  
+        TOTAL_PI_CODES,  
+        VOTER_DECIMATION_FACTOR,  
+    )  
   
     ###################  EYE PLOTS ###################    
     print("Generating eye diagrams...")
@@ -234,10 +235,15 @@ def main():
     zero_cross = crossings[0] if len(crossings) > 0 else 0  
     print("Creating eye diagram (this may take a moment)...")
     sys.stdout.flush()
-    sdp.simple_eye(signal_filtered[idx_min+zero_cross+int(g['os']/2):], g['os']*2, 2000, Ts, "{}Gbps 2-PAM Signal after Channel".format(round(data_rate/1e9)),res=100)  
+    sdp.simple_eye(signal_filtered[idx_min+zero_cross+int(g['os']/2):], g['os']*2, 2000, Ts, "{}Gbps NRZ Signal to CDR".format(round(data_rate/1e9)),res=100)  
+    sdp.simple_eye(np.array(rxpi_sq_i_final[900*20*g['os']:])*0.5, g['os']*2, 2000, Ts, "{}GHZ Half Rate Recovered Clock".format(round(RX_CLOCK_FREQUENCY/1e9)),res=100)
     print("Eye diagram completed.")
     sys.stdout.flush()
-#    sdp.simple_eye(np.array(rxpi_sq_i_final[900*20*g['os']:])*0.5, g['os']*2, 2000, Ts, "{}GHZ Half Rate Recovered Clock".format(round(RX_CLOCK_FREQUENCY/1e9)),res=100)
+    
+    # Save all plots to plots/ directory
+    print("\nSaving all plots to plots/ directory...")
+    sys.stdout.flush()
+    save_all_plots()
     
     print("Script completed successfully!")
     sys.stdout.flush()  
