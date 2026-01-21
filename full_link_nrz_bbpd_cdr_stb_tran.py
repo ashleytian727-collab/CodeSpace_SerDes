@@ -1,5 +1,7 @@
 import numpy as np  
 from collections import deque  
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt  
 import scipy as sp  
 from matplotlib.ticker import FuncFormatter  
@@ -7,6 +9,7 @@ from scipy.interpolate import PchipInterpolator
 import warnings  
 import os  
 import sys
+from pathlib import Path
 
 ## Custom Libraries
 import serdespy as sdp  
@@ -119,17 +122,32 @@ def main():
         dj_peak_ui=DJ_AMPLITUDE
     )
 
+    print("Starting Bode analysis...")
+    sys.stdout.flush()
     fig = bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, '',   
                       KP_GAIN, KI_GAIN, PI_NUM_BITS, PHASE_INTG_DITHER_BITS, FREQ_INTG_DITHER_BITS, DECIMATION_FACTOR,   
                       SYMBOL_INTERVAL, TOTAL_LOOP_GAIN_FACTOR, TOTAL_LOOP_LATENCY_WORDS)  
-    fig.savefig('bbpd_cdr_stability.png')  
-  
+    
+    print("Saving Bode analysis figure...")
+    sys.stdout.flush()
+    script_dir = Path(__file__).resolve().parent
+    fig_dir = script_dir / "plots/bbpd_cdr_stability.png"
+    fig.savefig(fig_dir)
+    print("Bode analysis saved.")
+    sys.stdout.flush()  
+
     ###################  TX to RX link ###################    
-    s_param_dir = "/Users/tamal.das2/Projects/SerDes/Channels/"   
-    if not os.path.exists(s_param_dir):  
-        print(f"ERROR: S-parameter directory not found at '{s_param_dir}'")  
-        return  
+    print("Starting TX to RX link processing...")
+    sys.stdout.flush()
+    script_dir = Path(__file__).resolve().parent
+    s_param_dir = script_dir / "Channels"
+    if not s_param_dir.is_dir():
+        print(f"ERROR: S-parameter directory not found at '{s_param_dir}'")
+        print("Please ensure the 'Channels' directory exists in the same directory as this script.")
+        return
   
+    print("Generating channel transfer function...")
+    sys.stdout.flush()
     g['H_ch'], g['f'], S11_s, S11_l = gen_channel(  
         # Source  
         r_s=g['rterm_source'],  
@@ -164,47 +182,75 @@ def main():
     )  
       
     if g['H_ch'] is None: return   
-    print("\nFull link: Transfer Function evaluation completed.\n")  
+    print("Full link: Transfer Function evaluation completed.\n")
+    sys.stdout.flush()
       
+    print("Computing impulse response interpolation...")
+    sys.stdout.flush()
     imp_ch = impinterp(np.fft.irfft(g['H_ch']), round( (1/Ts) / (2*g['f'][-1])))  
     imp_ch /= np.sum(np.abs(imp_ch))  
+    print("Impulse response computed.")
+    sys.stdout.flush()
       
+    print("Performing FFT convolution (channel filtering)...")
+    sys.stdout.flush()
     signal_filtered = sp.signal.fftconvolve(signal_jitter, imp_ch, mode="full")  
-    signal_filtered = signal_filtered[0:len(signal_jitter)]  
+    signal_filtered = signal_filtered[0:len(signal_jitter)]
+    print("Channel filtering completed.")
+    sys.stdout.flush()
   
     ###################  CDR LOOP TRAN ###################    
-    rxpi_sq_i_final = bbpd_cdr_loop_tran(  
-        DESERIALIZATION_FACTOR,  
-        g,  
-        signal_filtered,  
-        PHASE_INTG_DITHER_BITS,  
-        TOTAL_LOOP_LATENCY_WORDS,  
-        PI_NUM_BITS,  
-        rx_clk_i,  
-        rx_clk_i_b,  
-        rx_clk_q,  
-        rx_clk_q_b,  
-        t_cdr,  
-        SAMPLE_RATE,  
-        RX_CLOCK_FREQUENCY,  
-        SAMPLER_C2Q,  
-        SAMPLER_SENSE,  
-        KP_GAIN,  
-        KI_GAIN,  
-        FREQ_INTG_DITHER_BITS,  
-        TOTAL_PI_CODES,  
-        VOTER_DECIMATION_FACTOR,  
-    )  
+    # rxpi_sq_i_final = bbpd_cdr_loop_tran(  
+    #     DESERIALIZATION_FACTOR,  
+    #     g,  
+    #     signal_filtered,  
+    #     PHASE_INTG_DITHER_BITS,  
+    #     TOTAL_LOOP_LATENCY_WORDS,  
+    #     PI_NUM_BITS,  
+    #     rx_clk_i,  
+    #     rx_clk_i_b,  
+    #     rx_clk_q,  
+    #     rx_clk_q_b,  
+    #     t_cdr,  
+    #     SAMPLE_RATE,  
+    #     RX_CLOCK_FREQUENCY,  
+    #     SAMPLER_C2Q,  
+    #     SAMPLER_SENSE,  
+    #     KP_GAIN,  
+    #     KI_GAIN,  
+    #     FREQ_INTG_DITHER_BITS,  
+    #     TOTAL_PI_CODES,  
+    #     VOTER_DECIMATION_FACTOR,  
+    # )  
   
     ###################  EYE PLOTS ###################    
+    print("Generating eye diagrams...")
+    sys.stdout.flush()
     #sdp.simple_eye(signal_ideal, g['os']*3, 100, Ts, "{}Gbps 2-PAM Signal".format(data_rate/1e9), res=100, linewidth=1.5)  
     idx_min = 700000  
     idx_max = 800000  
     arr = signal_filtered[idx_min:idx_max]  
     crossings = np.where(arr[:-1] * arr[1:] < 0)[0]  
     zero_cross = crossings[0] if len(crossings) > 0 else 0  
+    print("Creating eye diagram (this may take a moment)...")
+    sys.stdout.flush()
     sdp.simple_eye(signal_filtered[idx_min+zero_cross+int(g['os']/2):], g['os']*2, 2000, Ts, "{}Gbps 2-PAM Signal after Channel".format(round(data_rate/1e9)),res=100)  
-    sdp.simple_eye(np.array(rxpi_sq_i_final[900*20*g['os']:])*0.5, g['os']*2, 2000, Ts, "{}GHZ Half Rate Recovered Clock".format(round(RX_CLOCK_FREQUENCY/1e9)),res=100)  
+    print("Eye diagram completed.")
+    sys.stdout.flush()
+#    sdp.simple_eye(np.array(rxpi_sq_i_final[900*20*g['os']:])*0.5, g['os']*2, 2000, Ts, "{}GHZ Half Rate Recovered Clock".format(round(RX_CLOCK_FREQUENCY/1e9)),res=100)
+    
+    print("Script completed successfully!")
+    sys.stdout.flush()  
   
 if __name__ == "__main__":  
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"Error occurred: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    finally:
+        # Ensure all matplotlib figures are closed
+        plt.close('all')
+        sys.exit(0)

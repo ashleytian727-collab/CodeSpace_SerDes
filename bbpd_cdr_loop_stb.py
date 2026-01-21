@@ -61,9 +61,42 @@ def bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, sweep_type, KP_GAIN, KI_GAIN, PI_NUM_
         fixed_N      = TOTAL_LOOP_LATENCY_WORDS  
   
     # ==========================================  
-    # 3. PLOTTING SETUP  
+    # 3. HELPER FUNCTION FOR PM/GM CALCULATION  
     # ==========================================  
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))  
+    def calc_pm_gm(num, den, w, data_rate):
+        """Calculate Phase Margin (PM) and Gain Margin (GM) from open-loop transfer function"""
+        # Create open-loop system
+        sys_open = signal.TransferFunction(num, den, dt=1/SYMBOL_INTERVAL)
+        _, h_open = signal.dfreqresp(sys_open, w=w)
+        
+        mag_open = np.abs(h_open)
+        phase_open = np.angle(h_open) * 180 / np.pi
+        
+        # Gain Margin: frequency where phase = -180°
+        idx_180 = np.where(phase_open < -179.9)[0]
+        if len(idx_180) > 0:
+            idx = idx_180[0]
+            gm_lin = 1.0 / (mag_open[idx] + 1e-10)
+            gm_db = 20 * np.log10(gm_lin)
+            gm_freq = w[idx] * data_rate / (2 * np.pi)
+        else:
+            gm_db, gm_freq = np.nan, np.nan
+        
+        # Phase Margin: frequency where magnitude crosses 1 (0 dB)
+        idx_unity = np.where(mag_open < 1.0)[0]
+        if len(idx_unity) > 0:
+            idx = idx_unity[0]
+            pm = phase_open[idx] + 180.0
+            pm_freq = w[idx] * data_rate / (2 * np.pi)
+        else:
+            pm, pm_freq = np.nan, np.nan
+        
+        return pm, pm_freq, gm_db, gm_freq, mag_open, phase_open
+    
+    # ==========================================  
+    # 4. PLOTTING SETUP  
+    # ==========================================  
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))  
     colors = plt.cm.viridis(np.linspace(0, 0.9, len(sweep_values)))  
   
     # Frequency Vector: 10 kHz to Nyquist  
@@ -72,8 +105,10 @@ def bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, sweep_type, KP_GAIN, KI_GAIN, PI_NUM_
     if len(sweep_values) > 1:  
         print(f"Running sweep for {sweep_type}...")  
         print(f"Total Loop Gain Factor: {TOTAL_LOOP_GAIN_FACTOR:.6f}")  
+    print(f"\n{'Parameter':<15} {'BW (MHz)':<12} {'PM (°)':<12} {'GM (dB)':<12}")
+    print("-" * 60)
     # ==========================================  
-    # 4. ITERATION LOOP  
+    # 5. ITERATION LOOP  
     # ==========================================  
     for i, val in enumerate(sweep_values):  
         # Map sweep values to current loop parameters  
@@ -137,10 +172,17 @@ def bbpd_dig_cdr_stab(data_rate, RJ_SIGMA, sweep_type, KP_GAIN, KI_GAIN, PI_NUM_
         # Print Bandwidth  
         bw_idx = np.where(mag_jtf_db < -3.0)[0]  
         bw_val = freq_hz[bw_idx[0]]/1e6 if len(bw_idx) > 0 else 0  
-        print(f"  {label_str}: BW ~ {bw_val:.2f} MHz")  
+        
+        # Calculate PM and GM for open-loop
+        pm, pm_freq, gm_db, gm_freq, mag_open, phase_open = calc_pm_gm(num_open, den_open, w, data_rate)
+        
+        # Print metrics
+        pm_str = f"{pm:.2f}" if not np.isnan(pm) else "N/A"
+        gm_str = f"{gm_db:.2f}" if not np.isnan(gm_db) else "N/A"
+        print(f"{label_str:<15} {bw_val:<12.2f} {pm_str:<12} {gm_str:<12}")  
   
     # ==========================================  
-    # 5. FINAL VISUALS & INFO BOX  
+    # 6. FINAL VISUALS & INFO BOX  
     # ==========================================  
     # Text Box Logic  
     if sweep_type == 'KP_GAIN':  
