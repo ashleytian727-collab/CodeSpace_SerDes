@@ -13,7 +13,7 @@ if str(workspace_root) not in sys.path:
 
 # Import the plotting module
 try:
-    import full_link_part3 as fl
+    import full_link_nrz_stateye as fl
 except Exception as e:
     print("Error importing full_link_part3:", e)
     raise

@@ -112,7 +112,6 @@ def main():
     ###################  RX clock Generation ###################   
     duration = len(signal_jitter) * Ts  
     #print(f"RX sim Duration: {duration}seconds")  
-    RJ_STD_DEV = RJ_SIGMA * g['ui']  
     DJ_FREQ = 100e6  
     DJ_AMPLITUDE = 0.00 * 2 * g['ui']  
     RX_CLOCK_FREQUENCY = data_rate/2
@@ -121,7 +120,7 @@ def main():
         clock_freq_hz=RX_CLOCK_FREQUENCY,
         duration_ui=int(duration/g['ui']),
         samples_per_ui=g['os'] * 2,
-        rj_rms_ui=RJ_STD_DEV,
+        rj_rms_ui=RJ_SIGMA,
         dj_freq_hz=DJ_FREQ,
         dj_peak_ui=DJ_AMPLITUDE
     )

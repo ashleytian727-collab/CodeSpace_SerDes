@@ -11,7 +11,7 @@ from pathlib import Path
 
 import serdespy as sdp
 
-import stat_eye2
+import stat_eye
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -589,17 +589,17 @@ def main():
             print("Eye is closed")
             
         #Build ISI PDFs (anchored, CF) on a common V-grid:
-        taus_ui, V, isi_pdfs, main = stat_eye2.build_isi_pdf_grid_from_pulse_anchored_cf(pulse_resp_ch, g['ui'], Ts, n_precursor=12, n_postcursor=24, n_tau=61, v_bins=801, prune_energy=0.999, chunk_tau=32, dtype=np.float32)
+        taus_ui, V, isi_pdfs, main = stat_eye.build_isi_pdf_grid_from_pulse_anchored_cf(pulse_resp_ch, g['ui'], Ts, n_precursor=12, n_postcursor=24, n_tau=61, v_bins=801, prune_energy=0.999, chunk_tau=32, dtype=np.float32)
 
         #τ-average with Dual-Dirac jitter:
         #isi_avg = stat_eye2.apply_tau_kernel_dual_dirac(isi_pdfs, sigma_rj_ui=0.004, dj_pp_ui=0.10)
 
         #Build BER with low memory:
-        t_ui, Vg, BER = stat_eye2.build_ber_grid_from_isi_streaming(taus_ui, V, isi_pdfs, main, sigma_v=0.0, chunk_tau=16, dtype=np.float32)
+        t_ui, Vg, BER = stat_eye.build_ber_grid_from_isi_streaming(taus_ui, V, isi_pdfs, main, sigma_v=0.0, chunk_tau=16, dtype=np.float32)
 
-        stat_eye2.plot_isi_bar_at_tau_fast(taus_ui, V, isi_pdfs, tau_index=int(0.5*len(taus_ui)))
+        stat_eye.plot_isi_bar_at_tau_fast(taus_ui, V, isi_pdfs, tau_index=int(0.5*len(taus_ui)))
 
-        stat_eye2.plot_ber_contours_ui01(t_ui, Vg, BER, levels=(1e-7,1e-15))
+        stat_eye.plot_ber_contours_ui01(t_ui, Vg, BER, levels=(1e-7,1e-15))
 
     plt.show()    
 
