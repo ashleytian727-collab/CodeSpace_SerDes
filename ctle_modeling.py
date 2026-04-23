@@ -10,10 +10,12 @@ def gen_ctle_resp(f, aac, adc, fz, fp2):
     This is a direct translation of the Octave function:
         gen_ctle_resp(f, aac, adc, fz, fp2)
     """
-    fp1 = fz * (10.0 ** ((aac - adc) / 20.0))
-    wz = 2 * np.pi * fz
-    wp2 = 2 * np.pi * fp2
-    wp1 = 2 * np.pi * fp1
+    fp1 = fz * (10.0 ** ((aac - adc) / 20.0))        # 为了在低频（DC）与目标交流频段之间产生指定的增益差（aac − adc，单位 dB），
+                                                        # 需要把第一个极点 fp1 放在相对于零点 fz 的一个特定位置。
+                                                        # CTLE 的增益形状由零点（fz）和极点（fp1, fp2）之间的间距决定——特别是零点和第一个极点之间的频率比决定了“boost”的量（以 dB 表示）。
+    wz = 2 * np.pi * fz                                # 零点角频率
+    wp2 = 2 * np.pi * fp2                            # 第二个极点角频率
+    wp1 = 2 * np.pi * fp1                            # 第一个极点角频率
     k = (10.0 ** (adc / 20.0)) * wp1 * wp2 / wz
 
     w = 2 * np.pi * f
